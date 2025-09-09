@@ -5,6 +5,10 @@ from typing import List
 import numpy as np
 import pandas as pd
 from joblib import load
+import logging
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 def predict_test_folds(
     df: pd.DataFrame,
@@ -14,6 +18,8 @@ def predict_test_folds(
     models_dir: str,
     out_dir: str,
     date_col: str = "date",
+    stock_id_col: str = "stockid",
+    models: List[str] = [],
 ) -> pd.DataFrame:
     """
     Load (split, model) artifacts and produce predictions on each split's test set.
@@ -24,6 +30,8 @@ def predict_test_folds(
     (out / "preds").mkdir(parents=True, exist_ok=True)
 
     files = list((models_dir / "models").glob("split*_*.joblib"))
+    if models:
+        files = [f for f in files if any(f"_{m}." in f.name for m in models)]
     if not files:
         raise FileNotFoundError(f"No models found under {models_dir/'models'}")
 
@@ -50,17 +58,24 @@ def predict_test_folds(
         dates = pd.to_datetime(df.loc[te_idx, date_col])
         idxs  = df.loc[te_idx].index.to_numpy()
 
+        # ← NEW: grab stock id values (fallback to original index if missing)
+        if stock_id_col in df.columns:
+            stockids = df.loc[te_idx, stock_id_col].to_numpy()
+        else:
+            stockids = idxs  # fallback
+
+
         pipe = load(mf)
         y_pred = pipe.predict(X_te)
 
         rec = pd.DataFrame({
             "split": split_id,
             "model": model_name,
-            "index": idxs,
             "date": dates,
+            "stockid": stockids,     
             "y_true": y_te,
             "y_pred": y_pred,
-        }).sort_values(["date", "index"])
+        }).sort_values(["date", "stockid"])
         rec.to_csv(out / "preds" / f"preds_split{split_id}_{model_name}.csv", index=False)
         frames.append(rec)
     
@@ -69,9 +84,21 @@ def predict_test_folds(
     for model_name in model_names:
         model_frames = [f for f in frames if f['model'].iloc[0] == model_name]
         if model_frames:
-            preds_model = pd.concat(model_frames, ignore_index=True).sort_values(["split", "date", "index"])
-            preds_model.to_csv(out / f"preds_all_{model_name}.csv", index=False)
+            preds_model = pd.concat(model_frames, ignore_index=True).sort_values(["split", "date", "stockid"])
+            preds_model.to_csv(out / f"preds_all/{model_name}.csv", index=False)
+            logger.info(f"[predict] Saved preds_all/{model_name}.csv with {len(preds_model)} rows")
     
-    preds = pd.concat(frames, ignore_index=True).sort_values(["model", "split", "date", "index"])
+    preds = pd.concat(frames, ignore_index=True).sort_values(["model", "split", "date", "stockid"])
+    
     preds.to_csv(out / f"preds_all.csv", index=False)
+    logger.info(f"[predict] Saved {len(frames)} files under {out/'preds'} and preds_all.csv")
     return preds
+
+def _latest_preds_file(out_dir: str | Path, models = []) -> Path:
+    preds_dir = Path(out_dir)
+    files = sorted(preds_dir.glob("preds_all*.csv"))
+    if models:
+        files = [f'{out_dir}/preds_all/{m}.csv' for m in models]
+    if not files:
+        raise FileNotFoundError(f"No preds_all*.csv under {preds_dir}. Enable DO_PREDICT=True.")
+    return files

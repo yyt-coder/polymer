@@ -7,7 +7,10 @@ import numpy as np
 import pandas as pd
 from joblib import dump
 from models import make_pipeline, needs_scaling
+import logging
 
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 def train_on_splits(
     df: pd.DataFrame,
@@ -31,7 +34,8 @@ def train_on_splits(
         y_tr = df.loc[tr_idx, target_col].to_numpy()
 
         for name, est in models.items():
-            pipe = make_pipeline(est, do_scale=needs_scaling(est))
+            logger.info(f"[train] Fitting split {split_id} model {name} on {len(tr_idx)} rows")
+            pipe = make_pipeline(est)
             pipe.fit(X_tr, y_tr)
 
             model_path = out / "models" / f"split{split_id}_{name}.joblib"
@@ -47,7 +51,8 @@ def train_on_splits(
             })
 
     log = pd.DataFrame(rows).sort_values(["model", "split"]).reset_index(drop=True)
-    log.to_csv(out / f"train_log_{name}.csv", index=False)
-    with open(out / f"train_log_{name}.json", "w") as f:
+    log.to_csv(out / f"train_log.csv", index=False)
+    logger.info(f"[train] Saved train_log.csv with {len(log)} rows")
+    with open(out / f"train_log.json", "w") as f:
         json.dump(log.to_dict(orient="records"), f, default=str, indent=2)
     return log

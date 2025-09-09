@@ -5,6 +5,12 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from scipy.stats import pearsonr, spearmanr
+from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
 
 def _safe_pearson(y_true, y_pred):
     try:
@@ -21,7 +27,7 @@ def _safe_spearman(y_true, y_pred):
 def evaluate_predictions(
     preds_df: pd.DataFrame,
     by_date_ic: bool = True,
-    out_csv: Optional[str] = None,
+    out_dir: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Compute metrics per (split, model). If by_date_ic=True, average per-date Spearman IC.
@@ -48,6 +54,8 @@ def evaluate_predictions(
 
         rows.append({
             "split": split_id,
+            "split_start": g['date'].min(),
+            "split_end": g['date'].max(),
             "model": model_name,
             "n_obs": len(g),
             "rmse": rmse,
@@ -57,8 +65,14 @@ def evaluate_predictions(
             "spearman": sp,
             "avg_date_ic": date_ic,
         })
+    
+    # return model to DataFrame dict
 
     metrics = pd.DataFrame(rows).sort_values(["model", "split"]).reset_index(drop=True)
-    if out_csv:
-        pd.DataFrame(metrics).to_csv(out_csv, index=False)
+    model_2_df = {m: df for m, df in metrics.groupby("model")}
+    if out_dir:
+        for model, df in model_2_df.items():
+            path = Path(out_dir) / f"metrics_{model}.csv"
+            df.to_csv(path, index=False)
+            logger.info(f"[evaluate] Saved {len(df)} rows to {path}")
     return metrics

@@ -2,13 +2,34 @@
 import pandas as pd
 from pathlib import Path
 from splits import fixed_splits_by_date, expanding_splits_by_date, materialize_splits
+from portfolio import save_ret_mat, save_portfolios, save_alpha_metrics
 
 from models import get_model_zoo
 from train import train_on_splits
-from predict import predict_test_folds
+from predict import predict_test_folds, _latest_preds_file
 from evaluate import evaluate_predictions
+import logging
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning, message="invalid value encountered in matmul")
+
 
 # --- user config ---
+ACTIONS      = [
+    # "train",
+    # "predict",
+    "metrics",
+    "portfolio",
+]
+
+DO_TRAIN = True if "train" in ACTIONS else False
+DO_PREDICT = True if "predict" in ACTIONS else False
+DO_METRICS = True if "metrics" in ACTIONS else False
+DO_PORTFOLIO = True if "portfolio" in ACTIONS else False
+
 DATE_COL    = "date"
 TARGET_COL  = "target"
 FEATURE_COLS = [f'feature{i}' for i in range(1, 11)]
@@ -18,12 +39,20 @@ OUT_DIR = "/Users/cyang/src/polymer_output"
 SPLIT_MODE = "fixed"   # "fixed" or "expanding"
 
 # Fixed-window parameters (ignored if expanding)
-TRAIN_SIZE = 252       # in unique dates
+TRAIN_SIZE = 252 * 3       # in unique dates
 TEST_RATIO = 0.20
-NSPLITS    = 5
+NSPLITS    = None     # use all dates
 STEP       = None      # default: test_size
 GAP        = 0
 
+MODELS = [
+    # "linreg",
+    # "ridge",
+    # "lasso",
+    "elasticnet",
+    # "rf",
+    # "lgbm",
+]
 def main(df: pd.DataFrame):
     # 1) Build splits
     # splits = list(rolling_date_splits_fixed(df, date_col="date", train_size=252, test_ratio=0.2, gap=0, nsplits=5, step=None, return_indices=False))
@@ -36,36 +65,65 @@ def main(df: pd.DataFrame):
 
     # 2) Train & save
     models = get_model_zoo()
-    train_on_splits(
-        df=df,
-        feature_cols=FEATURE_COLS,
-        target_col=TARGET_COL,
-        splits=splits,
-        models=models,
-        out_dir=OUT_DIR,
-    )
+    models = {k:v  for k, v in models.items() if k in MODELS}
+    if DO_TRAIN:
+        logger.info(f"[run] Training {len(models)} models on {len(splits)} splits")
+        train_on_splits(
+            df=df,
+            feature_cols=FEATURE_COLS,
+            target_col=TARGET_COL,
+            splits=splits,
+            models=models,
+            out_dir=OUT_DIR,
+        )
 
     # 3) Predict & save
-    preds = predict_test_folds(
-        df=df,
-        feature_cols=FEATURE_COLS,
-        target_col=TARGET_COL,
-        splits=splits,
-        models_dir=OUT_DIR,
-        out_dir=OUT_DIR,
-        date_col=DATE_COL,
-    )
+    if DO_PREDICT:
+        logger.info(f"[run] Predicting test folds for {len(models)} models on {len(splits)} splits")
+        preds = predict_test_folds(
+            df=df,
+            feature_cols=FEATURE_COLS,
+            target_col=TARGET_COL,
+            splits=splits,
+            models_dir=OUT_DIR,
+            out_dir=OUT_DIR,
+            date_col=DATE_COL,
+            models=MODELS,
+        )
+    else:
+        preds_files = _latest_preds_file(OUT_DIR, MODELS)
+        preds = [pd.read_csv(preds_file, parse_dates=["date"]) for preds_file in preds_files]
+        logger.info(f"[run] Skipping PREDICT. loading {' | '.join(preds_files)}")
+        preds = pd.concat(preds, ignore_index=True)
+        preds = preds[preds['model'].isin(MODELS)]
 
     # 4) Evaluate
-    metrics = evaluate_predictions(
-        preds_df=preds,
-        by_date_ic=True,
-        out_csv=str(Path(OUT_DIR) / "metrics.csv"),
-    )
-    print(metrics)
+    if DO_METRICS:
+        logger.info(f"[run] Evaluating predictions")
+        
+        metrics = evaluate_predictions(
+            preds_df=preds,
+            by_date_ic=True,
+            out_dir=OUT_DIR
+        )
+        print(metrics)
+
+    # 5) Evaluate portfolio
+    if DO_PORTFOLIO:
+        logger.info(f"[run] Saving portfolio and alpha metrics")
+        ret_mat = save_ret_mat(preds, OUT_DIR, offset_days=2, stock_id_col="stockid")
+        save_portfolios(preds, ret_mat, OUT_DIR, methods=["raw", "rank20"], q=0.20)
+        save_alpha_metrics(preds, OUT_DIR, ret_mat=ret_mat, ann=252)
+    else:
+        ret_mat_path = Path(OUT_DIR) / "portfolio" / "ret_mat.csv"
+        if ret_mat_path.exists():
+            ret_mat = pd.read_csv(ret_mat_path, index_col=0, parse_dates=True)
+            print(f"[run] Skipping PORTFOLIO. Loaded ret_mat.csv")
+        else:
+            print(f"[run] Skipping PORTFOLIO. No ret_mat.csv found (metrics can still run if daily_returns_*.csv exist)")
 
 if __name__ == "__main__":
     # Replace with your dataframe loader
-    df = pd.read_parquet("/Users/cyang/src/mock_hankerrank/polymer/data_clipped.parquet", engine="fastparquet")
+    df = pd.read_parquet("/Users/cyang/src/polymer/data_clipped.parquet", engine="fastparquet")
     df = df[df['target'].notna()].reset_index(drop=True)
     main(df)

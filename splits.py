@@ -93,6 +93,7 @@ def materialize_splits(
     df: pd.DataFrame,
     date_col: str,
     splitter: Iterable[Tuple[np.ndarray, np.ndarray]],
+    id_col: str = 'stockid',
 ) -> List[dict]:
     """
     Turn a generator of (train_idx, test_idx) into a list with metadata (test date range).
@@ -100,10 +101,14 @@ def materialize_splits(
     out = []
     for i, (tr_idx, te_idx) in enumerate(splitter, start=1):
         test_dates = pd.to_datetime(df.loc[te_idx, date_col])
+        train_ids = df.loc[tr_idx, id_col].to_numpy()
+        test_ids  = df.loc[te_idx, id_col].to_numpy()
         out.append({
             "split": i,
             "train_idx": tr_idx,
             "test_idx": te_idx,
+            "train_ids": train_ids,
+            "test_ids": test_ids,
             "test_start": test_dates.min(),
             "test_end": test_dates.max(),
         })

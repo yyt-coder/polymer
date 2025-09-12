@@ -39,7 +39,6 @@ def get_model_zoo(random_state: int = 42) -> Dict[str, object]:
         models["lgbm"] = LGBMRegressor(
             # n_estimators=600,
             n_estimators=1200,
-
             learning_rate=0.05,
             subsample=0.8, colsample_bytree=0.8,
             reg_lambda=1.0, random_state=random_state, n_jobs=-1

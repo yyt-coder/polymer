@@ -11,13 +11,10 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 
-# -----------------------------
-# 1) Build & save ret_mat once
-# -----------------------------
 def save_ret_mat(
     preds: pd.DataFrame,
     out_dir: str | Path,
-    offset_days: int = 2,
+    offset_days: int = 0,
     stock_id_col: str = "stockid",
 ) -> pd.DataFrame:
     """Create realized return matrix (index = realization date, cols = stock ids) and save once."""
@@ -32,9 +29,6 @@ def save_ret_mat(
     return ret_mat
 
 
-# -----------------------------
-# 2) Save portfolios & returns
-# -----------------------------
 def _feature_mat(preds: pd.DataFrame, model: str, sid: str, offset_days: int) -> pd.DataFrame:
     fm = (preds.loc[preds["model"] == model]
                 .pivot_table(index="date", columns=sid, values="y_pred", aggfunc="first")
@@ -48,7 +42,7 @@ def _pos_from_raw(fm: pd.DataFrame) -> pd.DataFrame:
     w_neg = neg.div(neg.sum(axis=1), axis=0)
     return (w_pos.fillna(0.0) - w_neg.fillna(0.0))
 
-def _pos_from_rank(fm: pd.DataFrame, q: float = 0.2) -> pd.DataFrame:
+def _pos_from_rank(fm: pd.DataFrame, q: float = 0.5) -> pd.DataFrame:
     qL = fm.quantile(1 - q, axis=1); qS = fm.quantile(q, axis=1)
     L = fm.ge(qL, axis=0).astype(float); S = fm.le(qS, axis=0).astype(float)
     L = L.div(L.sum(axis=1), axis=0); S = S.div(S.sum(axis=1), axis=0)
@@ -59,7 +53,7 @@ def save_portfolios(
     ret_mat: pd.DataFrame,
     out_dir: str | Path,
     methods: list[str] = ("raw", "rank20"),
-    q: float = 0.20,
+    q: float = 0.50,
     offset_days: int = 2,
     stock_id_col: str = "stockid",
 ) -> None:
@@ -191,47 +185,3 @@ def save_alpha_metrics(
             })
 
     pd.DataFrame(rows).sort_values(["model", "method"]).to_csv(port_dir / "metrics_summary.csv", index=False)
-
-
-# # --- helpers ---
-# def preds_to_mats(preds: pd.DataFrame, model: str, stock_id_col: str = "stockid", offset_days: int = 2):
-#     p = preds[preds["model"] == model].copy()
-#     p["date"] = pd.to_datetime(p["date"])
-#     sid = stock_id_col if stock_id_col in p.columns else "index"
-
-#     feature_mat = p.pivot_table(index="date", columns=sid, values="y_pred", aggfunc="first")
-#     ret_mat     = p.pivot_table(index="date", columns=sid, values="y_true", aggfunc="first")
-
-#     # align weights to the **realization date** (date + offset)
-#     feature_mat.index = feature_mat.index + pd.Timedelta(days=offset_days)
-#     # ret_mat index already corresponds to realization date because y_true is offset to date
-#     feature_mat, ret_mat = feature_mat.align(ret_mat, join="inner", axis=0)  # align dates
-#     feature_mat, ret_mat = feature_mat.align(ret_mat, join="inner", axis=1)  # align stocks
-#     return feature_mat, ret_mat
-
-# def pos_from_raw(feature_mat: pd.DataFrame) -> pd.DataFrame:
-#     pos = feature_mat.clip(lower=0)
-#     neg = (-feature_mat.clip(upper=0))
-#     w_pos = pos.div(pos.sum(axis=1), axis=0).fillna(0.0)
-#     w_neg = neg.div(neg.sum(axis=1), axis=0).fillna(0.0)
-#     return w_pos - w_neg  # dollar-neutral each day
-
-# def pos_from_rank(feature_mat: pd.DataFrame, q: float = 0.2) -> pd.DataFrame:
-#     q_long  = feature_mat.quantile(1 - q, axis=1)
-#     q_short = feature_mat.quantile(q,     axis=1)
-#     long_df  = feature_mat.ge(q_long,  axis=0).astype(float)
-#     short_df = feature_mat.le(q_short, axis=0).astype(float)
-#     long_df  = long_df.div(long_df.sum(axis=1), axis=0).fillna(0.0)
-#     short_df = short_df.div(short_df.sum(axis=1), axis=0).fillna(0.0)
-#     return long_df - short_df  # equal-weight top/bottom q
-
-# # --- one-liners to get returns ---
-# def portfolio_returns_from_raw(preds: pd.DataFrame, model: str, stock_id_col="stockid", offset_days=2):
-#     feature_mat, ret_mat = preds_to_mats(preds, model, stock_id_col, offset_days)
-#     pos_mat = pos_from_raw(feature_mat)
-#     return (pos_mat * ret_mat).sum(axis=1).rename(f"{model}_ret_raw")  # daily series
-
-# def portfolio_returns_from_rank(preds: pd.DataFrame, model: str, q=0.2, stock_id_col="stockid", offset_days=2):
-#     feature_mat, ret_mat = preds_to_mats(preds, model, stock_id_col, offset_days)
-#     pos_mat = pos_from_rank(feature_mat, q=q)
-#     return (pos_mat * ret_mat).sum(axis=1).rename(f"{model}_ret_rank{int(q*100)}")

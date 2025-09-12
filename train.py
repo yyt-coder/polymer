@@ -6,7 +6,7 @@ from typing import Dict, List
 import numpy as np
 import pandas as pd
 from joblib import dump
-from models import make_pipeline, needs_scaling
+from models import make_pipeline
 import logging
 
 logger = logging.getLogger(__name__)

@@ -85,13 +85,13 @@ def predict_test_folds(
         model_frames = [f for f in frames if f['model'].iloc[0] == model_name]
         if model_frames:
             preds_model = pd.concat(model_frames, ignore_index=True).sort_values(["split", "date", "stockid"])
+            if not (out / "preds_all").exists():
+                (out / "preds_all").mkdir(parents=True, exist_ok=True)
             preds_model.to_csv(out / f"preds_all/{model_name}.csv", index=False)
             logger.info(f"[predict] Saved preds_all/{model_name}.csv with {len(preds_model)} rows")
     
     preds = pd.concat(frames, ignore_index=True).sort_values(["model", "split", "date", "stockid"])
     
-    preds.to_csv(out / f"preds_all.csv", index=False)
-    logger.info(f"[predict] Saved {len(frames)} files under {out/'preds'} and preds_all.csv")
     return preds
 
 def _latest_preds_file(out_dir: str | Path, models = []) -> Path:

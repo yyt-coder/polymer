@@ -42,6 +42,17 @@ def _pos_from_raw(fm: pd.DataFrame) -> pd.DataFrame:
     w_neg = neg.div(neg.sum(axis=1), axis=0)
     return (w_pos.fillna(0.0) - w_neg.fillna(0.0))
 
+def _pos_from_uniform_rank(fm: pd.DataFrame) -> pd.DataFrame:
+    # remap to uniform [-1, 1] based on rank and normalize to sum each side to 1
+    r = fm.rank(axis=1, method="average", na_option="keep")
+    den = r.notna().sum(axis=1).sub(1).replace(0, np.nan)
+    r = (r.sub(1)).div(den, axis=0).mul(2).sub(1)
+
+    pos = r.clip(lower=0); neg = (-r.clip(upper=0))
+    w_pos = pos.div(pos.sum(axis=1), axis=0)
+    w_neg = neg.div(neg.sum(axis=1), axis=0)
+    return (w_pos.fillna(0.0) - w_neg.fillna(0.0))
+
 def _pos_from_rank(fm: pd.DataFrame, q: float = 0.5) -> pd.DataFrame:
     qL = fm.quantile(1 - q, axis=1); qS = fm.quantile(q, axis=1)
     L = fm.ge(qL, axis=0).astype(float); S = fm.le(qS, axis=0).astype(float)
@@ -85,6 +96,11 @@ def save_portfolios(
             pos_rank = _pos_from_rank(fm, q=q)
             pos_rank.to_csv(port_dir / f"pos_rank20_{model}.csv")
             rets_cols[f"ret_rank{int(q*100)}"] = (pos_rank * rm).sum(axis=1)
+
+        if any(m.startswith("uniform_rank") for m in methods):
+            pos_urank = _pos_from_uniform_rank(fm)
+            pos_urank.to_csv(port_dir / f"pos_uniform_rank_{model}.csv")
+            rets_cols[f"ret_uniform_rank"] = (pos_urank * rm).sum(axis=1)
 
         if rets_cols:
             df_ret = pd.DataFrame(rets_cols)

@@ -19,8 +19,8 @@ warnings.filterwarnings("ignore", category=RuntimeWarning, message="invalid valu
 
 # --- user config ---
 ACTIONS      = [
-    # "train",
-    # "predict",
+    "train",
+    "predict",
     "metrics",
     "portfolio",
 ]
@@ -30,13 +30,14 @@ RUN_SUFFIX   = "features_8_7_10"  # key in suffix_to_features
 RUN_SUFFIX = "features_10"
 RUN_SUFFIX = "features_3_8"
 # RUN_SUFFIX = "features_3_7_8"
+RUN_SUFFIX = "features_1_2_3_4_5_7_8_9_10"
 DO_TRAIN = True if "train" in ACTIONS else False
 DO_PREDICT = True if "predict" in ACTIONS else False
 DO_METRICS = True if "metrics" in ACTIONS else False
 DO_PORTFOLIO = True if "portfolio" in ACTIONS else False
 
 MODELS = [
-    "linreg",
+    # "linreg",
     "ridge",
     # "lasso",
     # "elasticnet",
@@ -143,7 +144,8 @@ def main(df: pd.DataFrame):
     if DO_PORTFOLIO:
         logger.info(f"[run] Saving portfolio and alpha metrics")
         ret_mat = save_ret_mat(preds, OUT_DIR, offset_days=0, stock_id_col="stockid")
-        save_portfolios(preds, ret_mat, OUT_DIR, methods=["raw", "rank20"], q=0.50)
+        # save_portfolios(preds, ret_mat, OUT_DIR, methods=["raw", "rank20", "uniform_rank"], q=0.50)
+        save_portfolios(preds, ret_mat, OUT_DIR, methods=["uniform_rank"], q=0.50)
         save_alpha_metrics(preds, OUT_DIR, ret_mat=ret_mat, ann=252)
     else:
         ret_mat_path = Path(OUT_DIR) / "portfolio" / "ret_mat.csv"

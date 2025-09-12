@@ -17,7 +17,7 @@ def get_model_zoo(random_state: int = 42) -> Dict[str, object]:
     """Unfitted estimators (numeric-only)."""
     models = {
         "linreg": LinearRegression(),
-        "ridge":  RidgeCV(alphas=np.logspace(-3, 3, 13), cv=5),
+        "ridge":  RidgeCV(alphas=np.logspace(-3, 7, 33), cv=5) ,
         # "lasso":  LassoCV(alphas=None, cv=5, max_iter=10000),
         "elasticnet": ElasticNetCV(                             
             l1_ratio=[0.01, 0.05, 0.1, 0.3],
